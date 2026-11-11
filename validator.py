@@ -1,9 +1,13 @@
 import msvcrt
+import re
 import unicodedata
 from country_state_city import Country, State, City
 
 
-PAISES = sorted(Country.get_all_countries(), key=lambda c: c.name)
+PAISES = sorted(Country.get_countries(), key=lambda c: c.name)
+VOGAIS = "aeiouyáéíóúâêîôûãõàü"
+CONSOANTES = "bcdfghjklmnpqrstvwxzç"
+
 
 def sem_acento(t):
     return "".join(
@@ -11,21 +15,69 @@ def sem_acento(t):
         if unicodedata.category(c) != "Mn"
     ).strip().lower()
 
-def get_text(prompt):
+
+def palavra_valida(p):
+    p = p.replace("'", "").lower()
+    if len(p) < 2:
+        return False, "Mínimo 2 letras."
+    if re.search(r"(.)\1{2,}", p):
+        return False, "Letra repetida demais."
+    if re.search(r"(.{2,})\1{2,}", p):
+        return False, "Repetição estranha."
+    if re.search(r"[bcdfghjklmnpqrstvwxzç]{4,}", p):
+        return False, "Muitas consoantes seguidas."
+    if not any(c in VOGAIS for c in p) or not any(c in CONSOANTES for c in p):
+        return False, "Não parece nome."
+    return True, ""
+
+
+def get_first_name(prompt):
     while True:
         v = input(prompt).strip().title()
         if v == "0":
             return None
-        if v:
+        if not v:
+            print("  Não pode ficar vazio.")
+            continue
+        if " " in v:
+            print("  Só o primeiro nome, sem espaço.")
+            continue
+        if not re.fullmatch(r"[A-Za-zÀ-ÖØ-öø-ÿ'\-]+", v):
+            print("  Use apenas letras.")
+            continue
+        ok, erro = palavra_valida(v)
+        if ok:
             return v
-        print(" Não pode ficar vazio.")
+        print(f"  {erro}")
+
+
+def get_last_name(prompt):
+    while True:
+        v = " ".join(input(prompt).strip().split()).title()
+        if v == "0":
+            return None
+        if not v:
+            print("  Não pode ficar vazio.")
+            continue
+        if not re.fullmatch(r"[A-Za-zÀ-ÖØ-öø-ÿ'\s\-]+", v):
+            print("  Use apenas letras e espaços.")
+            continue
+        falhou = False
+        for p in v.split():
+            ok, erro = palavra_valida(p)
+            if not ok:
+                print(f"  {erro}")
+                falhou = True
+                break
+        if not falhou:
+            return v
+
 
 def get_citizenship():
     print("\nEscolha o país de cidadania:")
     for i, c in enumerate(PAISES, 1):
         ddi = str(c.phonecode).lstrip("+")
-        label = f"{c.name} (+{ddi})"
-        print(f"  {i:3d}. {label:<34}", end="\n" if i % 3 == 0 else "")
+        print(f"  {i:3d}. {c.name} (+{ddi})", end="\n" if i % 3 == 0 else "")
     if len(PAISES) % 3:
         print()
 
@@ -50,12 +102,12 @@ def get_state(country_code):
     if not estados:
         return "Único", "UN"
 
-    estados.sort(key=lambda s: s.name)
+    estados.sort(key=lambda s: s.iso_code)
 
     print("\nEscolha o estado:")
     for i, st in enumerate(estados, 1):
-        print(f"  {i:2d}. {st.name} ({st.iso_code.upper()})", end="\n" if i % 2 == 0 else "")
-    if len(estados) % 2:
+        print(f"  {i:2d}. {st.iso_code.upper():<6}", end="\n" if i % 5 == 0 else "")
+    if len(estados) % 5:
         print()
 
     while True:
@@ -66,7 +118,7 @@ def get_state(country_code):
             i = int(e)
             if 1 <= i <= len(estados):
                 st = estados[i - 1]
-                return st.name, st.iso_code
+                return st.name, st.iso_code.upper()
             print(f"  Fora do intervalo (1 a {len(estados)}).")
         except ValueError:
             print("  Digite só o número.")
@@ -80,7 +132,7 @@ def get_city(country_code, state_code, state_name):
     nomes = {sem_acento(c.name): c.name for c in cidades}
 
     while True:
-        raw = input(f"  Cidade de {state_name} ({state_code}) (0 volta): ").strip()
+        raw = input(f"  Cidade ({state_code}) (0 volta): ").strip()
         if raw == "0":
             return None
         if len(raw) < 3:
@@ -89,22 +141,25 @@ def get_city(country_code, state_code, state_name):
         chave = sem_acento(raw)
         if chave in nomes:
             return nomes[chave]
-        print(f"  '{raw.title()}' não existe em {state_name} ({state_code}).")
+        print(f"  '{raw.title()}' não existe em {state_code}.")
+
 
 def format_phone(digits, ddi=""):
     prefixo = f"+{ddi} " if ddi else ""
     if not digits:
         return prefixo
     if len(digits) <= 2:
-        return f"{prefixo} ({digits}"
+        return f"{prefixo}({digits}"
     if len(digits) <= 6:
-        return f"{prefixo} ({digits[:2]}) {digits[2:]}"
+        return f"{prefixo}({digits[:2]}) {digits[2:]}"
     if len(digits) <= 10:
         return f"{prefixo}({digits[:2]}) {digits[2:6]}-{digits[6:]}"
     return f"{prefixo}({digits[:2]}) {digits[2:7]}-{digits[7:11]}"
 
+
 def redraw(prompt, digits, ddi=""):
-    print(f"\r {' ' *75}\r {prompt}{format_phone(digits, ddi="")}", end="", flush=True)
+    print(f"\r{' ' * 75}\r{prompt}{format_phone(digits, ddi)}", end="", flush=True)
+
 
 def get_phone(prompt, ddi="", opcional=False):
     while True:
@@ -135,10 +190,11 @@ def get_phone(prompt, ddi="", opcional=False):
             return None
         if opcional and not digits:
             return "Não informado"
-        if len (digits) in (10, 11):
+        if len(digits) in (10, 11):
             return format_phone(digits, ddi)
 
-        print(" Telefone invalido. Use DDD + nuymero (10 ou 11 digitos)")
+        print("  Telefone inválido. Use DDD + número (10 ou 11 dígitos).")
+
 
 def get_age(prompt):
     while True:
@@ -147,9 +203,9 @@ def get_age(prompt):
             return None
         try:
             n = int(e)
-            if n < 0:
-                print(" Idade não pode ser negativa")
+            if n < 0 or n > 130:
+                print("  Idade inválida (0 a 130).")
                 continue
             return n
         except ValueError:
-            print(" Digite um numero")
+            print("  Digite um número inteiro.")

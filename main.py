@@ -1,250 +1,269 @@
 from storage import load, save
-from validator import get_text, get_abbr, get_phone, get_age
+from validator import (
+    get_first_name,
+    get_last_name,
+    get_citizenship,
+    get_state,
+    get_city,
+    get_phone,
+    get_age,
+)
 
 
-def voltar():
-    input("\nENTER pra voltar ao menu...")
+def cadastrar_pessoa():
+    dados = {}
+    etapa = 0
+
+    while etapa < 7:
+        if etapa == 0:
+            nome = get_first_name("\nNome (0 sai): ")
+            if nome is None:
+                return None
+            dados["nome"] = nome
+            etapa += 1
+
+        elif etapa == 1:
+            sobrenome = get_last_name("Sobrenome (0 volta): ")
+            if sobrenome is None:
+                etapa -= 1
+                continue
+            dados["sobrenome"] = sobrenome
+            etapa += 1
+
+        elif etapa == 2:
+            idade = get_age("Idade (0 volta): ")
+            if idade is None:
+                etapa -= 1
+                continue
+            dados["idade"] = idade
+            etapa += 1
+
+        elif etapa == 3:
+            pais, iso, ddi = get_citizenship()
+            if pais is None:
+                etapa -= 1
+                continue
+            dados["pais"] = pais
+            dados["iso_pais"] = iso
+            dados["ddi"] = ddi
+            etapa += 1
+
+        elif etapa == 4:
+            estado, uf = get_state(dados["iso_pais"])
+            if estado is None:
+                etapa -= 1
+                continue
+            dados["estado"] = estado
+            dados["sigla_estado"] = uf
+            etapa += 1
+
+        elif etapa == 5:
+            cidade = get_city(dados["iso_pais"], dados["sigla_estado"], dados["estado"])
+            if cidade is None:
+                etapa -= 1
+                continue
+            dados["cidade"] = cidade
+            etapa += 1
+
+        elif etapa == 6:
+            tel = get_phone("Telefone (0 volta): ", ddi=dados["ddi"])
+            if tel is None:
+                etapa -= 1
+                continue
+            dados["telefone"] = tel
+            etapa += 1
+
+    return dados
 
 
-def register(people):
-    print("\n--- NOVO CADASTRO ---")
-    print("(digite 0 em qualquer campo pra cancelar)\n")
-
-    first = get_text("  Nome: ")
-    if first is None:
+def listar(cadastros):
+    if not cadastros:
+        print("\nNenhum cadastro.")
         return
-    last = get_text("  Sobrenome: ")
-    if last is None:
-        return
-    phone1 = get_phone("  Telefone principal (com DDD): ")
-    if phone1 is None:
-        return
-    phone2 = get_phone("  Segundo telefone (ENTER pula): ", opcional=True)
-    if phone2 is None:
-        return
-    age = get_age("  Idade: ")
-    if age is None:
-        return
-    city = get_text("  Cidade (ex: São Paulo): ")
-    if city is None:
-        return
-    abbr = get_abbr("  Abreviação da cidade (ex: SP): ")
-    if abbr is None:
-        return
-    cidadania = get_text("  Cidadania (ex: Brasileira): ")
-    if cidadania is None:
-        return
 
-    people.append({
-        "first_name": first,
-        "last_name": last,
-        "phone1": phone1,
-        "phone2": phone2,
-        "age": age,
-        "city": city,
-        "city_abbr": abbr,
-        "citizenship": cidadania,
-    })
-    save(people)
-    print(f"\n{first} {last} cadastrado(a).")
-    voltar()
+    print(f"\n=== CADASTROS ({len(cadastros)}) ===")
+    for i, p in enumerate(cadastros, 1):
+        nome_completo = f"{p['nome']} {p.get('sobrenome', '')}".strip()
+        print(
+            f"  {i}. {nome_completo} ({p['idade']}) - {p['cidade']}/{p['sigla_estado']} "
+            f"({p['pais']}) - Tel: {p['telefone']}"
+        )
 
 
-def mostrar(people):
-    print("\n" + "=" * 60)
-    print("CADASTROS")
-    print("=" * 60)
-
-    for i, p in enumerate(people, 1):
-        print(f"{i}. {p['first_name']} {p['last_name']} ({p['age']} anos) - {p['citizenship']}")
-        print(f"   {p['city']} ({p['city_abbr']})")
-        print(f"   Tel 1: {p['phone1']} | Tel 2: {p['phone2']}")
-        print("-" * 60)
-
-
-def listar(people):
-    if not people:
-        print("\nNenhum registro.")
-        voltar()
-        return
-    mostrar(people)
-    voltar()
-
-
-def update(people):
-    if not people:
-        print("\nNenhum registro.")
-        voltar()
+def editar(cadastros):
+    if not cadastros:
+        print("\nNenhum cadastro.")
         return
 
-    mostrar(people)
+    listar(cadastros)
 
     while True:
-        e = input("\nNúmero do cadastro pra atualizar (0 cancela): ").strip()
+        e = input("\nNúmero do cadastro pra editar (0 volta): ").strip()
         if e == "0":
             return
         try:
             i = int(e)
-            if 1 <= i <= len(people):
-                person = people [i - 1]
+            if 1 <= i <= len(cadastros):
+                p = cadastros[i - 1]
                 break
-            print("Numero fora da lista.")
+            print(f"  Fora do intervalo (1 a {len(cadastros)}).")
         except ValueError:
-            print("Digite um numero.")
+            print("  Digite só o número.")
 
     while True:
-        print(f"\n--- ATUALIZAR: {person['first_name']}{person['last_name']} ---")
-        print(f"1. Nome ({person['fitst_name']})")
-        print(f"2. Sobrenome ({person['last_name']})")
-        print(f"3. Telefone Princiapal ({['phone1']})")
-        print(f"4. Segundo Telefone ({['phone2']})")
-        print(f"5. Idade ({['age']}) anos")
-        print(f"6. Cidade ({person['city']}) - {person['cit_abbr']}")
-        print(f"7. Cidadania ({person['citizenship']})")
-        print(f"0. Concluir")
+        nome_completo = f"{p['nome']} {p.get('sobrenome', '')}".strip()
+        print(f"\nEditando: {nome_completo}")
+        print(f"  1. Nome ({p['nome']})")
+        print(f"  2. Sobrenome ({p.get('sobrenome', '')})")
+        print(f"  3. Idade ({p['idade']})")
+        print(f"  4. Localização ({p['cidade']}/{p['sigla_estado']} - {p['pais']})")
+        print(f"  5. Telefone ({p['telefone']})")
+        print("  0. Voltar")
 
-        op = input("\nO que mudou? ").strip()
+        op = input("\nCampo: ").strip()
 
         if op == "0":
             return
 
         if op == "1":
-            val = get_text(" Novo nome: ")
-            if val is not None:
-                person["first_name"] = val 
+            novo = get_first_name("Novo nome (0 volta): ")
+            if novo:
+                p["nome"] = novo
+                save(cadastros)
 
-        elif op =="2":
-            print(f"\n Sobrenome atual: {person['last_name']}")
-            print (" 1. Adicionar (casamento, 3° nome)")
-            print (" 2. Substituir")
-            print (" 0 Cancelar")
-            sub = input (" Opção: ").strip()
+        elif op == "2":
+            novo = get_last_name("Novo sobrenome (0 volta): ")
+            if novo:
+                p["sobrenome"] = novo
+                save(cadastros)
 
-            if sub == "1":
-                extra = get_text(" Sobrenome a adicionar:")
-                if extra is not None:
-                    person ["last_name"] = f"{person['last_name']} {extra}"
-            elif sub == "2":
-                novo = get_text (" Novo Sobrenome Completo:  ")
-                if novo is not None:
-                    person ["last_name"] = novo
-            else:
-                continue
         elif op == "3":
-            val = get_phone(" Novo Telefone Principal: ")
-            if val is not None:
-                person["phone1"] = val
+            nova = get_age("Nova idade (0 volta): ")
+            if nova is not None:
+                p["idade"] = nova
+                save(cadastros)
 
         elif op == "4":
-            val = get_phone(" Novo Segundo Telefone (ENTER remove): ", opcional=True)
-            if val is not None:
-                person["phone2"] = val
+            pais, iso, ddi = get_citizenship()
+            if pais is None:
+                continue
+            estado, uf = get_state(iso)
+            if estado is None:
+                continue
+            cidade = get_city(iso, uf, estado)
+            if cidade is None:
+                continue
+            p["pais"] = pais
+            p["iso_pais"] = iso
+            p["ddi"] = ddi
+            p["estado"] = estado
+            p["sigla_estado"] = uf
+            p["cidade"] = cidade
+            save(cadastros)
 
         elif op == "5":
-            val = get_age (" Nova idade: ")
-            if val is not None:
-                person["Age"] = val
-
-        elif op == "6":
-            nova = get_text (" Nova Cidade: ")
-            if nova is None:
-                continue
-            abbr = get_abbr (" Abreviação (2 letra): ")
-            if abbr is None:
-                continue
-            person["city"] = nova
-            person["city_abbr"] = abbr
-
-        elif op == "7":
-            val = get_text (" Nova cidadania: ")
-            if val is not None:
-                person["citizenship"] = val
+            novo = get_phone("Novo telefone (0 volta): ", ddi=p["ddi"])
+            if novo:
+                p["telefone"] = novo
+                save(cadastros)
 
         else:
-            print("Opção Invalida")
-            continue
-
-        save(people)
-        print("Salvo")
+            print("  Opção inválida.")
 
 
-def stats(people):
-    print("\n" + "=" * 40)
-    print("ESTATÍSTICAS")
-    print("=" * 40)
-
-    if not people:
-        print("Nada pra calcular ainda.")
-        voltar()
+def estatisticas(cadastros):
+    if not cadastros:
+        print("\nNenhum cadastro.")
         return
 
-    old = max(people, key=lambda p: p["age"])
-    young = min(people, key=lambda p: p["age"])
-    avg = sum(p["age"] for p in people) / len(people)
+    idades = [p["idade"] for p in cadastros]
+    velho = max(cadastros, key=lambda p: p["idade"])
+    novo = min(cadastros, key=lambda p: p["idade"])
 
-    print(f"Total: {len(people)}")
-    print(f"Mais velho: {old['first_name']} {old['last_name']} ({old['age']} anos)")
-    print(f"Mais novo: {young['first_name']} {young['last_name']} ({young['age']} anos)")
-    print(f"Média: {avg:.2f} anos")
-    voltar()
+    por_pais = {}
+    for p in cadastros:
+        por_pais[p["pais"]] = por_pais.get(p["pais"], 0) + 1
+
+    velho_nome = f"{velho['nome']} {velho.get('sobrenome', '')}".strip()
+    novo_nome = f"{novo['nome']} {novo.get('sobrenome', '')}".strip()
+
+    print("\n=== ESTATÍSTICAS ===")
+    print(f"  Total: {len(cadastros)}")
+    print(f"  Média: {sum(idades) / len(idades):.1f} anos")
+    print(f"  Mais velho: {velho_nome} ({velho['idade']})")
+    print(f"  Mais novo: {novo_nome} ({novo['idade']})")
+    print("  Por país:")
+    for pais, qtd in sorted(por_pais.items(), key=lambda x: x[1], reverse=True):
+        print(f"    {pais}: {qtd}")
 
 
-def remove(people):
-    if not people:
-        print("\nNenhum registro.")
-        voltar()
+def remover(cadastros):
+    if not cadastros:
+        print("\nNenhum cadastro.")
         return
 
-    mostrar(people)
+    listar(cadastros)
 
     while True:
-        e = input("\nNúmero pra remover (0 cancela): ").strip()
+        e = input("\nNúmero pra remover (0 volta): ").strip()
         if e == "0":
             return
         try:
             i = int(e)
-            if 1 <= i <= len(people):
-                p = people.pop(i - 1)
-                save(people)
-                print(f"\n{p['first_name']} {p['last_name']} removido(a).")
-                voltar()
+            if 1 <= i <= len(cadastros):
+                alvo = cadastros[i - 1]
+                nome_completo = f"{alvo['nome']} {alvo.get('sobrenome', '')}".strip()
+                r = input(f"  Remover '{nome_completo}'? (s/n): ").strip().lower()
+                if r == "s":
+                    cadastros.pop(i - 1)
+                    save(cadastros)
                 return
-            print("Número fora da lista.")
+            print(f"  Fora do intervalo (1 a {len(cadastros)}).")
         except ValueError:
-            print("Digite um número.")
+            print("  Digite só o número.")
 
 
 def main():
-    people = load()
+    cadastros = load()
 
     while True:
         print("\n=== CADASTRO ===")
-        print("1. Cadastrar")
-        print("2. Listar")
-        print("3. Editar")
-        print("4. Estatísticas")
-        print("5. Remover")
-        print("6. Sair")
+        print("  1. Cadastrar")
+        print("  2. Listar")
+        print("  3. Editar")
+        print("  4. Estatísticas")
+        print("  5. Remover")
+        print("  0. Sair")
 
-        op = input("Opção: ").strip()
+        opcao = input("\nOpção: ").strip()
 
-        if op == "1":
-            register(people)
-        elif op == "2":
-            listar(people)
-        elif op == "3":
-            update(people)
-        elif op == "4":
-            stats(people)
-        elif op == "5":
-            remove(people)
-        elif op == "6":
+        if opcao == "1":
+            pessoa = cadastrar_pessoa()
+            if pessoa:
+                cadastros.append(pessoa)
+                save(cadastros)
+                print(f"\n{pessoa['nome']} cadastrado(a).")
+
+        elif opcao == "2":
+            listar(cadastros)
+            input("\nENTER pra voltar...")
+
+        elif opcao == "3":
+            editar(cadastros)
+
+        elif opcao == "4":
+            estatisticas(cadastros)
+            input("\nENTER pra voltar...")
+
+        elif opcao == "5":
+            remover(cadastros)
+
+        elif opcao == "0":
             r = input("\nSair mesmo? (s/n): ").strip().lower()
             if r == "s":
-                print("Tchau!")
                 break
         else:
-            print("Opção inválida.")
+            print("  Opção inválida.")
 
 
 if __name__ == "__main__":
