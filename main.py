@@ -80,72 +80,92 @@ def update(people):
     mostrar(people)
 
     while True:
-        e = input("\nNúmero do cadastro pra editar (0 cancela): ").strip()
+        e = input("\nNúmero do cadastro pra atualizar (0 cancela): ").strip()
         if e == "0":
             return
         try:
             i = int(e)
             if 1 <= i <= len(people):
-                person = people[i - 1]
+                person = people [i - 1]
                 break
-            print("Número fora da lista.")
+            print("Numero fora da lista.")
         except ValueError:
-            print("Digite um número.")
+            print("Digite um numero.")
 
     while True:
-        print(f"\n--- EDITANDO: {person['first_name']} {person['last_name']} ---")
-        print(f"1. Nome ({person['first_name']})")
+        print(f"\n--- ATUALIZAR: {person['first_name']}{person['last_name']} ---")
+        print(f"1. Nome ({person['fitst_name']})")
         print(f"2. Sobrenome ({person['last_name']})")
-        print(f"3. Telefone principal ({person['phone1']})")
-        print(f"4. Segundo telefone ({person['phone2']})")
-        print(f"5. Idade ({person['age']})")
-        print(f"6. Cidade ({person['city']})")
-        print(f"7. Abreviação ({person['city_abbr']})")
-        print(f"8. Cidadania ({person['citizenship']})")
-        print("0. Sair da edição")
+        print(f"3. Telefone Princiapal ({['phone1']})")
+        print(f"4. Segundo Telefone ({['phone2']})")
+        print(f"5. Idade ({['age']}) anos")
+        print(f"6. Cidade ({person['city']}) - {person['cit_abbr']}")
+        print(f"7. Cidadania ({person['citizenship']})")
+        print(f"0. Concluir")
 
-        op = input("\nCampo pra alterar (0 cancela): ").strip()
+        op = input("\nO que mudou? ").strip()
 
         if op == "0":
             return
-        elif op == "1":
-            val = get_text("  Novo nome: ")
+
+        if op == "1":
+            val = get_text(" Novo nome: ")
             if val is not None:
-                person["first_name"] = val
-        elif op == "2":
-            val = get_text("  Novo sobrenome: ")
-            if val is not None:
-                person["last_name"] = val
+                person["first_name"] = val 
+
+        elif op =="2":
+            print(f"\n Sobrenome atual: {person['last_name']}")
+            print (" 1. Adicionar (casamento, 3° nome)")
+            print (" 2. Substituir")
+            print (" 0 Cancelar")
+            sub = input (" Opção: ").strip()
+
+            if sub == "1":
+                extra = get_text(" Sobrenome a adicionar:")
+                if extra is not None:
+                    person ["last_name"] = f"{person['last_name']} {extra}"
+            elif sub == "2":
+                novo = get_text (" Novo Sobrenome Completo:  ")
+                if novo is not None:
+                    person ["last_name"] = novo
+            else:
+                continue
         elif op == "3":
-            val = get_phone("  Novo telefone principal: ")
+            val = get_phone(" Novo Telefone Principal: ")
             if val is not None:
                 person["phone1"] = val
+
         elif op == "4":
-            val = get_phone("  Novo segundo telefone (ENTER remove): ", opcional=True)
+            val = get_phone(" Novo Segundo Telefone (ENTER remove): ", opcional=True)
             if val is not None:
                 person["phone2"] = val
+
         elif op == "5":
-            val = get_age("  Nova idade: ")
+            val = get_age (" Nova idade: ")
             if val is not None:
-                person["age"] = val
+                person["Age"] = val
+
         elif op == "6":
-            val = get_text("  Nova cidade: ")
-            if val is not None:
-                person["city"] = val
+            nova = get_text (" Nova Cidade: ")
+            if nova is None:
+                continue
+            abbr = get_abbr (" Abreviação (2 letra): ")
+            if abbr is None:
+                continue
+            person["city"] = nova
+            person["city_abbr"] = abbr
+
         elif op == "7":
-            val = get_abbr("  Nova abreviação: ")
-            if val is not None:
-                person["city_abbr"] = val
-        elif op == "8":
-            val = get_text("  Nova cidadania: ")
+            val = get_text (" Nova cidadania: ")
             if val is not None:
                 person["citizenship"] = val
+
         else:
-            print("Opção inválida.")
+            print("Opção Invalida")
             continue
 
         save(people)
-        print("Salvo.")
+        print("Salvo")
 
 
 def stats(people):
