@@ -103,7 +103,7 @@ def format_phone(digits, ddi=""):
         return f"{prefixo}({digits[:2]}) {digits[2:6]}-{digits[6:]}"
     return f"{prefixo}({digits[:2]}) {digits[2:7]}-{digits[7:11]}"
 
-def redraw(prompt, digits, ddo=""):
+def redraw(prompt, digits, ddi=""):
     print(f"\r {' ' *75}\r {prompt}{format_phone(digits, ddi="")}", end="", flush=True)
 
 def get_phone(prompt, ddi="", opcional=False):
@@ -123,7 +123,7 @@ def get_phone(prompt, ddi="", opcional=False):
                 redraw(prompt, digits, ddi)
                 continue
 
-            if ch in ("\x00", "\x00"):
+            if ch in ("\x00", "\xe0"):
                 msvcrt.getwch()
                 continue
 
