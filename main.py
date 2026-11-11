@@ -1,77 +1,9 @@
-import json
-import os
-
-FILE = "people.json"
-
-
-def load():
-    if not os.path.exists(FILE):
-        return []
-    with open(FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def save(people):
-    with open(FILE, "w", encoding="utf-8") as f:
-        json.dump(people, f, indent=4, ensure_ascii=False)
+from storage import load, save
+from validators import get_text, get_abbr, get_phone, get_age
 
 
 def voltar():
     input("\nENTER pra voltar ao menu...")
-
-
-def get_text(prompt):
-    while True:
-        v = input(prompt).strip().title()
-        if v == "0":
-            return None
-        if v:
-            return v
-        print("  Não pode ficar vazio.")
-
-
-def get_abbr(prompt):
-    while True:
-        v = input(prompt).strip().upper()
-        if v == "0":
-            return None
-        if v.isalpha() and len(v) in (2, 3):
-            return v
-        print("  Use 2 ou 3 letras (SP, RJ, BH...).")
-
-
-def get_phone(prompt, opcional=False):
-    while True:
-        e = input(prompt).strip()
-        if e == "0":
-            return None
-        if opcional and not e:
-            return "Não informado"
-
-        # deixa só os dígitos
-        nums = "".join(c for c in e if c.isdigit())
-
-        if len(nums) == 11:
-            return f"({nums[:2]}) {nums[2:7]}-{nums[7:]}"
-        if len(nums) == 10:
-            return f"({nums[:2]}) {nums[2:6]}-{nums[6:]}"
-
-        print("  Telefone inválido. Use DDD + número.")
-
-
-def get_age(prompt):
-    while True:
-        e = input(prompt).strip()
-        if e == "0":
-            return None
-        try:
-            n = int(e)
-            if n < 0:
-                print("  Idade não pode ser negativa.")
-                continue
-            return n
-        except ValueError:
-            print("  Digite um número inteiro.")
 
 
 def register(people):
@@ -93,7 +25,7 @@ def register(people):
     age = get_age("  Idade: ")
     if age is None:
         return
-    city = get_text("  Cidade completa (ex: São Paulo): ")
+    city = get_text("  Cidade (ex: São Paulo): ")
     if city is None:
         return
     abbr = get_abbr("  Abreviação da cidade (ex: SP): ")
