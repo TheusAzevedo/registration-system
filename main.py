@@ -1,5 +1,5 @@
 from storage import load, save
-from validators import get_text, get_abbr, get_phone, get_age
+from validator import get_text, get_abbr, get_phone, get_age
 
 
 def voltar():
