@@ -1,270 +1,193 @@
-from storage import load, save
+import os
+from dotenv import load_dotenv
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from models import db, Pessoa
 from validator import (
-    get_first_name,
-    get_last_name,
-    get_citizenship,
-    get_state,
-    get_city,
-    get_phone,
-    get_age,
+    PAISES, validate_first_name, validate_last_name, validate_age,
+    validate_phone, get_country_info, get_states_list, get_cities_list
 )
 
+load_dotenv()
 
-def cadastrar_pessoa():
-    dados = {}
-    etapa = 0
+app = Flask(__name__)
 
-    while etapa < 7:
-        if etapa == 0:
-            nome = get_first_name("\nNome (0 sai): ")
-            if nome is None:
-                return None
-            dados["nome"] = nome
-            etapa += 1
+# Configuração do banco e do Flask
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+# TODO: Mudar essa secret key antes de subir pra produção no Render
+app.secret_key = os.getenv("SECRET_KEY", "dev-key")
 
-        elif etapa == 1:
-            sobrenome = get_last_name("Sobrenome (0 volta): ")
-            if sobrenome is None:
-                etapa -= 1
-                continue
-            dados["sobrenome"] = sobrenome
-            etapa += 1
+db.init_app(app)
 
-        elif etapa == 2:
-            idade = get_age("Idade (0 volta): ")
-            if idade is None:
-                etapa -= 1
-                continue
-            dados["idade"] = idade
-            etapa += 1
-
-        elif etapa == 3:
-            pais, iso, ddi = get_citizenship()
-            if pais is None:
-                etapa -= 1
-                continue
-            dados["pais"] = pais
-            dados["iso_pais"] = iso
-            dados["ddi"] = ddi
-            etapa += 1
-
-        elif etapa == 4:
-            estado, uf = get_state(dados["iso_pais"])
-            if estado is None:
-                etapa -= 1
-                continue
-            dados["estado"] = estado
-            dados["sigla_estado"] = uf
-            etapa += 1
-
-        elif etapa == 5:
-            cidade = get_city(dados["iso_pais"], dados["sigla_estado"], dados["estado"])
-            if cidade is None:
-                etapa -= 1
-                continue
-            dados["cidade"] = cidade
-            etapa += 1
-
-        elif etapa == 6:
-            tel = get_phone("Telefone (0 volta): ", ddi=dados["ddi"])
-            if tel is None:
-                etapa -= 1
-                continue
-            dados["telefone"] = tel
-            etapa += 1
-
-    return dados
+# Cria as tabelas se não existirem
+with app.app_context():
+    db.create_all() 
 
 
-def listar(cadastros):
-    if not cadastros:
-        print("\nNenhum cadastro.")
-        return
+@app.route("/")
+def index():
+    # Pega todos, do mais novo pro mais velho no sistema
+    cadastros = Pessoa.query.order_by(Pessoa.id.desc()).all()
 
-    print(f"\n=== CADASTROS ({len(cadastros)}) ===")
-    for i, p in enumerate(cadastros, 1):
-        nome_completo = f"{p['nome']} {p.get('sobrenome', '')}".strip()
-        print(
-            f"  {i}. {nome_completo} ({p['idade']}) - {p['cidade']}/{p['sigla_estado']} "
-            f"({p['pais']}) - Tel: {p['telefone']}"
-        )
+    stats = None
+    if cadastros:
+        idades = [p.idade for p in cadastros]
+        velho = max(cadastros, key=lambda p: p.idade)
+        novo = min(cadastros, key=lambda p: p.idade)
+        
+        # Contando quantos tem de cada país
+        por_pais = {}
+        for p in cadastros:
+            if p.pais in por_pais:
+                por_pais[p.pais] += 1
+            else:
+                por_pais[p.pais] = 1
 
+        stats = {
+            "total": len(cadastros),
+            "media": round(sum(idades) / len(idades), 1),
+            "velho": f"{velho.nome} {velho.sobrenome} ({velho.idade})",
+            "novo": f"{novo.nome} {novo.sobrenome} ({novo.idade})",
+            "por_pais": sorted(por_pais.items(), key=lambda x: x[1], reverse=True),
+        }
 
-def editar(cadastros):
-    if not cadastros:
-        print("\nNenhum cadastro.")
-        return
-
-    listar(cadastros)
-
-    while True:
-        e = input("\nNúmero do cadastro pra editar (0 volta): ").strip()
-        if e == "0":
-            return
-        try:
-            i = int(e)
-            if 1 <= i <= len(cadastros):
-                p = cadastros[i - 1]
-                break
-            print(f"  Fora do intervalo (1 a {len(cadastros)}).")
-        except ValueError:
-            print("  Digite só o número.")
-
-    while True:
-        nome_completo = f"{p['nome']} {p.get('sobrenome', '')}".strip()
-        print(f"\nEditando: {nome_completo}")
-        print(f"  1. Nome ({p['nome']})")
-        print(f"  2. Sobrenome ({p.get('sobrenome', '')})")
-        print(f"  3. Idade ({p['idade']})")
-        print(f"  4. Localização ({p['cidade']}/{p['sigla_estado']} - {p['pais']})")
-        print(f"  5. Telefone ({p['telefone']})")
-        print("  0. Voltar")
-
-        op = input("\nCampo: ").strip()
-
-        if op == "0":
-            return
-
-        if op == "1":
-            novo = get_first_name("Novo nome (0 volta): ")
-            if novo:
-                p["nome"] = novo
-                save(cadastros)
-
-        elif op == "2":
-            novo = get_last_name("Novo sobrenome (0 volta): ")
-            if novo:
-                p["sobrenome"] = novo
-                save(cadastros)
-
-        elif op == "3":
-            nova = get_age("Nova idade (0 volta): ")
-            if nova is not None:
-                p["idade"] = nova
-                save(cadastros)
-
-        elif op == "4":
-            pais, iso, ddi = get_citizenship()
-            if pais is None:
-                continue
-            estado, uf = get_state(iso)
-            if estado is None:
-                continue
-            cidade = get_city(iso, uf, estado)
-            if cidade is None:
-                continue
-            p["pais"] = pais
-            p["iso_pais"] = iso
-            p["ddi"] = ddi
-            p["estado"] = estado
-            p["sigla_estado"] = uf
-            p["cidade"] = cidade
-            save(cadastros)
-
-        elif op == "5":
-            novo = get_phone("Novo telefone (0 volta): ", ddi=p["ddi"])
-            if novo:
-                p["telefone"] = novo
-                save(cadastros)
-
-        else:
-            print("  Opção inválida.")
+    return render_template("index.html", cadastros=cadastros, paises=PAISES, stats=stats)
 
 
-def estatisticas(cadastros):
-    if not cadastros:
-        print("\nNenhum cadastro.")
-        return
+@app.route("/cadastrar", methods=["POST"])
+def cadastrar():
+    # Validações básicas
+    ok_nome, nome = validate_first_name(request.form.get("nome"))
+    if not ok_nome:
+        flash(nome, "danger")
+        return redirect(url_for("index"))
 
-    idades = [p["idade"] for p in cadastros]
-    velho = max(cadastros, key=lambda p: p["idade"])
-    novo = min(cadastros, key=lambda p: p["idade"])
+    ok_sobrenome, sobrenome = validate_last_name(request.form.get("sobrenome"))
+    if not ok_sobrenome:
+        flash(sobrenome, "danger")
+        return redirect(url_for("index"))
 
-    por_pais = {}
-    for p in cadastros:
-        por_pais[p["pais"]] = por_pais.get(p["pais"], 0) + 1
+    ok_idade, idade = validate_age(request.form.get("idade"))
+    if not ok_idade:
+        flash(idade, "danger")
+        return redirect(url_for("index"))
 
-    velho_nome = f"{velho['nome']} {velho.get('sobrenome', '')}".strip()
-    novo_nome = f"{novo['nome']} {novo.get('sobrenome', '')}".strip()
+    # Localização
+    iso_pais = request.form.get("iso_pais")
+    pais, iso, ddi = get_country_info(iso_pais)
+    
+    # O select de estado manda "UF|Nome do Estado" junto, por isso o split
+    estado_raw = request.form.get("estado", "") 
+    cidade = request.form.get("cidade")
 
-    print("\n=== ESTATÍSTICAS ===")
-    print(f"  Total: {len(cadastros)}")
-    print(f"  Média: {sum(idades) / len(idades):.1f} anos")
-    print(f"  Mais velho: {velho_nome} ({velho['idade']})")
-    print(f"  Mais novo: {novo_nome} ({novo['idade']})")
-    print("  Por país:")
-    for pais, qtd in sorted(por_pais.items(), key=lambda x: x[1], reverse=True):
-        print(f"    {pais}: {qtd}")
+    if not pais or "|" not in estado_raw or not cidade:
+        flash("Escolha o país, estado e cidade direito.", "danger")
+        return redirect(url_for("index"))
+
+    uf, estado_nome = estado_raw.split("|", 1)
+
+    ok_tel, telefone = validate_phone(request.form.get("telefone"), ddi=ddi)
+    if not ok_tel:
+        flash(telefone, "danger")
+        return redirect(url_for("index"))
+
+    # Tudo certo, salva no banco
+    nova_pessoa = Pessoa(
+        nome=nome,
+        sobrenome=sobrenome,
+        idade=idade,
+        pais=pais,
+        iso_pais=iso,
+        ddi=ddi,
+        estado=estado_nome,
+        sigla_estado=uf,
+        cidade=cidade,
+        telefone=telefone,
+    )
+    db.session.add(nova_pessoa)
+    db.session.commit()
+
+    flash(f"{nome} cadastrado com sucesso!", "success")
+    return redirect(url_for("index"))
 
 
-def remover(cadastros):
-    if not cadastros:
-        print("\nNenhum cadastro.")
-        return
+@app.route("/editar/<int:id>", methods=["GET", "POST"])
+def editar(id):
+    pessoa = Pessoa.query.get_or_404(id)
 
-    listar(cadastros)
+    if request.method == "POST":
+        # Mesma coisa do cadastro, mas atualiza o que já existe
+        ok_nome, nome = validate_first_name(request.form.get("nome"))
+        if not ok_nome:
+            flash(nome, "danger")
+            return redirect(url_for("editar", id=id))
 
-    while True:
-        e = input("\nNúmero pra remover (0 volta): ").strip()
-        if e == "0":
-            return
-        try:
-            i = int(e)
-            if 1 <= i <= len(cadastros):
-                alvo = cadastros[i - 1]
-                nome_completo = f"{alvo['nome']} {alvo.get('sobrenome', '')}".strip()
-                r = input(f"  Remover '{nome_completo}'? (s/n): ").strip().lower()
-                if r == "s":
-                    cadastros.pop(i - 1)
-                    save(cadastros)
-                return
-            print(f"  Fora do intervalo (1 a {len(cadastros)}).")
-        except ValueError:
-            print("  Digite só o número.")
+        ok_sobrenome, sobrenome = validate_last_name(request.form.get("sobrenome"))
+        if not ok_sobrenome:
+            flash(sobrenome, "danger")
+            return redirect(url_for("editar", id=id))
+
+        ok_idade, idade = validate_age(request.form.get("idade"))
+        if not ok_idade:
+            flash(idade, "danger")
+            return redirect(url_for("editar", id=id))
+
+        iso_pais = request.form.get("iso_pais")
+        pais, iso, ddi = get_country_info(iso_pais)
+        estado_raw = request.form.get("estado", "")
+        cidade = request.form.get("cidade")
+
+        if not pais or "|" not in estado_raw or not cidade:
+            flash("Localização inválida, confere aí.", "danger")
+            return redirect(url_for("editar", id=id))
+
+        uf, estado_nome = estado_raw.split("|", 1)
+
+        ok_tel, telefone = validate_phone(request.form.get("telefone"), ddi=ddi)
+        if not ok_tel:
+            flash(telefone, "danger")
+            return redirect(url_for("editar", id=id))
+
+        # Atualizando os campos na mão
+        pessoa.nome = nome
+        pessoa.sobrenome = sobrenome
+        pessoa.idade = idade
+        pessoa.pais = pais
+        pessoa.iso_pais = iso
+        pessoa.ddi = ddi
+        pessoa.estado = estado_nome
+        pessoa.sigla_estado = uf
+        pessoa.cidade = cidade
+        pessoa.telefone = telefone
+
+        db.session.commit()
+        flash("Cadastro atualizado!", "success")
+        return redirect(url_for("index"))
+
+    return render_template("editar.html", pessoa=pessoa, paises=PAISES)
 
 
-def main():
-    cadastros = load()
+@app.route("/remover/<int:id>", methods=["POST"])
+def remover(id):
+    pessoa = Pessoa.query.get_or_404(id)
+    db.session.delete(pessoa)
+    db.session.commit()
+    
+    flash(f"{pessoa.nome} foi deletado do sistema.", "warning")
+    return redirect(url_for("index"))
 
-    while True:
-        print("\n=== CADASTRO ===")
-        print("  1. Cadastrar")
-        print("  2. Listar")
-        print("  3. Editar")
-        print("  4. Estatísticas")
-        print("  5. Remover")
-        print("  0. Sair")
 
-        opcao = input("\nOpção: ").strip()
+# --- Rotas AJAX pra carregar estado e cidade no front ---
+@app.route("/api/estados/<iso_pais>")
+def api_estados(iso_pais):
+    return jsonify(get_states_list(iso_pais))
 
-        if opcao == "1":
-            pessoa = cadastrar_pessoa()
-            if pessoa:
-                cadastros.append(pessoa)
-                save(cadastros)
-                print(f"\n{pessoa['nome']} cadastrado(a).")
 
-        elif opcao == "2":
-            listar(cadastros)
-            input("\nENTER pra voltar...")
-
-        elif opcao == "3":
-            editar(cadastros)
-
-        elif opcao == "4":
-            estatisticas(cadastros)
-            input("\nENTER pra voltar...")
-
-        elif opcao == "5":
-            remover(cadastros)
-
-        elif opcao == "0":
-            r = input("\nSair mesmo? (s/n): ").strip().lower()
-            if r == "s":
-                break
-        else:
-            print("  Opção inválida.")
+@app.route("/api/cidades/<iso_pais>/<uf>/<estado_nome>")
+def api_cidades(iso_pais, uf, estado_nome):
+    return jsonify(get_cities_list(iso_pais, uf, estado_nome))
 
 
 if __name__ == "__main__":
-    main()
+    print("Iniciando servidor...")
+    app.run(debug=True)
