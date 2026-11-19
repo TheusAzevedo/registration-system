@@ -1,107 +1,120 @@
 import os
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
-from models import db, Pessoa
+from models import db, Person
+from admin import admin_bp
 from validator import (
-    PAISES, valida_nome, valida_sobrenome, valida_idade, valida_telefone,
-    pegar_info_pais, pegar_estados, pegar_cidades
+    COUNTRIES, validate_first_name, validate_last_name, validate_age,
+    validate_phone, validate_location, get_states_list, get_cities_list
 )
 
-# Aponta para a pasta principal do projeto
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"))
 
-# Configurações básicas
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-
-# TODO: Mudar essa secret key no servidor antes de subir pro ar
-app.secret_key = os.getenv("SECRET_KEY", "dev-key")
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024
+app.secret_key = os.getenv("SECRET_KEY")
 
 db.init_app(app)
 
-# Cria as tabelas na primeira execução
+# Registra as rotas que a gente separou no admin.py
+app.register_blueprint(admin_bp) 
+
 with app.app_context():
-    db.create_all() 
+    db.create_all()
+
+
+@app.after_request
+def add_security_headers(response):
+    # Cabeçalhos de segurança pra evitar clickjacking e XSS
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    
+    # CSP (tive que liberar o CDN do Bootstrap e o inline pros scripts funcionarem)
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;"
+    )
+    return response
 
 
 @app.route("/")
 def index():
-    # Não envia a lista de pessoas nem nomes confidenciais para a página pública
-    return render_template("index.html", paises=PAISES)
+    return render_template("index.html", countries=COUNTRIES)
 
 
-@app.route("/cadastrar", methods=["POST"])
-def cadastrar():
-    # Validações básicas do form
-    ok_nome, nome = valida_nome(request.form.get("nome"))
-    if not ok_nome:
-        flash(nome, "danger")
+@app.route("/register", methods=["POST"])
+def register():
+    # Validações do form de cadastro
+    ok_first, first_name = validate_first_name(request.form.get("first_name"))
+    if not ok_first:
+        flash(first_name, "danger")
         return redirect(url_for("index"))
 
-    ok_sobrenome, sobrenome = valida_sobrenome(request.form.get("sobrenome"))
-    if not ok_sobrenome:
-        flash(sobrenome, "danger")
+    ok_last, last_name = validate_last_name(request.form.get("last_name"))
+    if not ok_last:
+        flash(last_name, "danger")
         return redirect(url_for("index"))
 
-    ok_idade, idade = valida_idade(request.form.get("idade"))
-    if not ok_idade:
-        flash(idade, "danger")
+    ok_age, age = validate_age(request.form.get("age"))
+    if not ok_age:
+        flash(age, "danger")
         return redirect(url_for("index"))
 
-    # Dados de localização
-    iso_pais = request.form.get("iso_pais")
-    pais, iso, ddi = pegar_info_pais(iso_pais)
-    
-    # O select manda "UF|Nome do Estado" junto, por isso o split
-    estado_raw = request.form.get("estado", "") 
-    cidade = request.form.get("cidade")
-
-    if not pais or "|" not in estado_raw or not cidade:
-        flash("Escolha o país, estado e cidade direito.", "danger")
-        return redirect(url_for("index"))
-
-    uf, estado_nome = estado_raw.split("|", 1)
-
-    ok_tel, telefone = valida_telefone(request.form.get("telefone"), ddi=ddi)
-    if not ok_tel:
-        flash(telefone, "danger")
-        return redirect(url_for("index"))
-
-    # Se passou por tudo, salva no banco
-    nova_pessoa = Pessoa(
-        nome=nome,
-        sobrenome=sobrenome,
-        idade=idade,
-        pais=pais,
-        iso_pais=iso,
-        ddi=ddi,
-        estado=estado_nome,
-        sigla_estado=uf,
-        cidade=cidade,
-        telefone=telefone,
+    # Valida a localização pra ver se o cara não burlou o HTML
+    ok_loc, loc = validate_location(
+        request.form.get("country_iso"),
+        request.form.get("state"),
+        request.form.get("city"),
     )
-    
-    db.session.add(nova_pessoa)
+    if not ok_loc:
+        flash("Localização inválida.", "danger")
+        return redirect(url_for("index"))
+
+    # Desempacotando os dados que vieram da validação
+    country, iso, ddi, state_code, state_name, city = loc
+
+    ok_phone, phone = validate_phone(request.form.get("phone"), ddi=ddi)
+    if not ok_phone:
+        flash(phone, "danger")
+        return redirect(url_for("index"))
+
+    # Se tudo deu certo, cria o objeto e salva
+    new_person = Person(
+        first_name=first_name,
+        last_name=last_name,
+        age=age,
+        country=country,
+        country_iso=iso,
+        phone_code=ddi,
+        state=state_name,
+        state_code=state_code,
+        city=city,
+        phone=phone,
+    )
+
+    db.session.add(new_person)
     db.session.commit()
 
-    flash(f"{nome} cadastrado com sucesso!", "success")
+    flash("Cadastro realizado com sucesso!", "success")
     return redirect(url_for("index"))
 
 
-# --- Rotas AJAX pro JavaScript buscar os estados e cidades ---
-@app.route("/api/estados/<iso_pais>")
-def api_estados(iso_pais):
-    return jsonify(pegar_estados(iso_pais))
+# Rotas API pro JavaScript buscar estados e cidades
+@app.route("/api/states/<country_iso>")
+def api_states(country_iso):
+    return jsonify(get_states_list(country_iso))
 
 
-@app.route("/api/cidades/<iso_pais>/<uf>/<path:estado_nome>")
-def api_cidades(iso_pais, uf, estado_nome):
-    return jsonify(pegar_cidades(iso_pais, uf, estado_nome))
+@app.route("/api/cities/<country_iso>/<state_code>/<path:state_name>")
+def api_cities(country_iso, state_code, state_name):
+    return jsonify(get_cities_list(country_iso, state_code, state_name))
 
 
 if __name__ == "__main__":
-    print("Rodando o servidor local...")
+    print("Rodando o servidor...")
     app.run(debug=False)

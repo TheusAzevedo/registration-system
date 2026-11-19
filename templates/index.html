@@ -4,17 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gerenciar Cadastros</title>
-    <!-- CDN do Bootstrap corrigido -->
+    <!-- Bootstrap CSS (link corrigido) -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="bg-light">
 <div class="container py-5" style="max-width: 900px;">
+    
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2 class="fw-bold mb-0">Gerenciar Cadastros</h2>
         <span class="text-muted fw-semibold">MEI System</span>
     </div>
 
-    <!-- Mensagens Flash -->
+    <!-- Avisos do Flask -->
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% for category, message in messages %}
             <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm" role="alert">
@@ -27,29 +28,30 @@
     <div class="card shadow-sm border-0">
         <div class="card-header bg-white fw-bold py-3">Novo Cadastro</div>
         <div class="card-body p-4">
-            <form action="/cadastrar" method="POST" class="row g-3">
+            <form action="/register" method="POST" class="row g-3">
                 <div class="col-md-4">
                     <label class="form-label">Nome</label>
-                    <input type="text" name="nome" class="form-control" placeholder="Só o primeiro nome" required>
+                    <input type="text" name="first_name" class="form-control" placeholder="Só o primeiro nome" required>
                 </div>
                 <div class="col-md-5">
                     <label class="form-label">Sobrenome</label>
-                    <input type="text" name="sobrenome" class="form-control" placeholder="Sobrenome completo" required>
+                    <input type="text" name="last_name" class="form-control" placeholder="Sobrenome completo" required>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Idade</label>
-                    <input type="number" name="idade" min="0" max="130" class="form-control" placeholder="Ex: 30" required>
+                    <input type="number" name="age" min="0" max="130" class="form-control" placeholder="Ex: 30" required>
                 </div>
 
                 <div class="col-md-4">
                     <label class="form-label">País</label>
-                    <select name="iso_pais" id="select-pais" class="form-select" required>
-                        <optoin value="">Selecione o país...</optoin>
-                        {%for p in paises %}
-                            {% set codigo = p.iso_code if p.iso_code is defined else p.iso2 %}
-                            {% set ddi = (p.phone_code if p.phone_code is defined else p.phonecode) | string %}
-                            <option value="{{ codigo }}">
-                                {{ p.name }} (+{{ ddi.lstrip('+') }})
+                    <select name="country_iso" id="select-country" class="form-select" required>
+                        <option value="">Selecione o país...</option>
+                        {% for c in countries %}
+                            {# Verifica se a lib retorna iso_code ou iso2 #}
+                            {% set code = c.iso_code if c.iso_code is defined else c.iso2 %}
+                            {% set ddi = (c.phone_code if c.phone_code is defined else c.phonecode) | string %}
+                            <option value="{{ code }}">
+                                {{ c.name }} (+{{ ddi.lstrip('+') }})
                             </option>
                         {% endfor %}
                     </select>
@@ -57,21 +59,21 @@
 
                 <div class="col-md-4">
                     <label class="form-label">Estado</label>
-                    <select name="estado" id="select-estado" class="form-select" required disabled>
+                    <select name="state" id="select-state" class="form-select" required disabled>
                         <option value="">Escolha o país primeiro</option>
                     </select>
                 </div>
 
                 <div class="col-md-4">
                     <label class="form-label">Cidade</label>
-                    <select name="cidade" id="select-cidade" class="form-select" required disabled>
+                    <select name="city" id="select-city" class="form-select" required disabled>
                         <option value="">Escolha o estado primeiro</option>
                     </select>
                 </div>
 
                 <div class="col-md-4">
                     <label class="form-label">Telefone</label>
-                    <input type="text" name="telefone" class="form-control" placeholder="DDD + Número" required>
+                    <input type="text" name="phone" class="form-control" placeholder="DDD + Número" required>
                 </div>
 
                 <div class="col-12 mt-4">
@@ -82,81 +84,84 @@
     </div>
 </div>
 
-<!-- JS do Bootstrap (corrigido) pra funcionar o botão de fechar os alertas -->
+<!-- Bootstrap JS (link corrigido) -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
-    const paisSelect = document.getElementById("select-pais");
-    const estadoSelect = document.getElementById("select-estado");
-    const cidadeSelect = document.getElementById("select-cidade");
+    const countrySelect = document.getElementById("select-country");
+    const stateSelect = document.getElementById("select-state");
+    const citySelect = document.getElementById("select-city");
 
-    async function carregarEstados() {
-        const iso = paisSelect.value;
+    async function loadStates() {
+        const iso = countrySelect.value;
 
-        // Reseta os campos de baixo
-        estadoSelect.innerHTML = '<option value="">Buscando estados...</option>';
-        estadoSelect.disabled = true;
-        cidadeSelect.innerHTML = '<option value="">Escolha o estado primeiro</option>';
-        cidadeSelect.disabled = true;
+        // Limpa e desabilita os selects de baixo
+        stateSelect.innerHTML = '<option value="">Buscando estados...</option>';
+        stateSelect.disabled = true;
+        citySelect.innerHTML = '<option value="">Escolha o estado primeiro</option>';
+        citySelect.disabled = true;
 
         if (!iso) {
-            estadoSelect.innerHTML = '<option value="">Escolha o país primeiro</option>';
+            stateSelect.innerHTML = '<option value="">Escolha o país primeiro</option>';
             return;
         }
 
         try {
-            const res = await fetch(`/api/estados/${iso}`);
-            const estados = await res.json();
+            const res = await fetch(`/api/states/${iso}`);
+            const states = await res.json();
 
-            // Montando as options na mão (mais rápido que createElement)
-            estadoSelect.innerHTML = '<option value="">Selecione o estado...</option>';
-            estados.forEach(st => {
-                estadoSelect.innerHTML += `<option value="${st.iso_code}|${st.name}">${st.name}</option>`;
+            stateSelect.innerHTML = '<option value="">Selecione o estado...</option>';
+            
+            // Loop pra montar as options (jeito raiz, sem createElement)
+            states.forEach(st => {
+                stateSelect.innerHTML += `<option value="${st.iso_code}|${st.name}">${st.name}</option>`;
             });
             
-            estadoSelect.disabled = false;
+            stateSelect.disabled = false;
         } catch (erro) {
-            console.error("Deu pau ao buscar estados:", erro);
+            console.error("Deu erro ao buscar os estados:", erro);
         }
     }
 
-    async function carregarCidades() {
-        const iso = paisSelect.value;
-        const val = estadoSelect.value;
+    async function loadCities() {
+        const iso = countrySelect.value;
+        const val = stateSelect.value;
 
-        cidadeSelect.innerHTML = '<option value="">Buscando cidades...</option>';
-        cidadeSelect.disabled = true;
+        citySelect.innerHTML = '<option value="">Buscando cidades...</option>';
+        citySelect.disabled = true;
 
         if (!val) {
-            cidadeSelect.innerHTML = '<option value="">Escolha o estado primeiro</option>';
+            citySelect.innerHTML = '<option value="">Escolha o estado primeiro</option>';
             return;
         }
 
-        // Separa a UF do nome
-        const [uf, nomeEstado] = val.split("|");
+        // Separa a UF do nome do estado (que veio no formato "UF|Nome")
+        const [stateCode, stateName] = val.split("|");
 
         try {
-            const res = await fetch(`/api/cidades/${iso}/${uf}/${encodeURIComponent(nomeEstado)}`);
-            const cidades = await res.json();
+            const res = await fetch(`/api/cities/${iso}/${stateCode}/${encodeURIComponent(stateName)}`);
+            const cities = await res.json();
 
-            cidadeSelect.innerHTML = '<option value="">Selecione a cidade...</option>';
-            cidades.forEach(cid => {
-                cidadeSelect.innerHTML += `<option value="${cid}">${cid}</option>`;
+            citySelect.innerHTML = '<option value="">Selecione a cidade...</option>';
+            
+            cities.forEach(cid => {
+                citySelect.innerHTML += `<option value="${cid}">${cid}</option>`;
             });
             
-            cidadeSelect.disabled = false;
+            citySelect.disabled = false;
         } catch (erro) {
-            console.error("Deu erro ao carregar cidades:", erro);
+            console.error("Deu pau ao carregar as cidades:", erro);
         }
     }
 
-    paisSelect.addEventListener("change", carregarEstados);
-    estadoSelect.addEventListener("change", carregarCidades);
+    // Eventos de mudança
+    countrySelect.addEventListener("change", loadStates);
+    stateSelect.addEventListener("change", loadCities);
 
-    // Se o form voltar com erro do backend e já tiver um país selecionado, 
-    // a gente força o carregamento dos estados de novo
-    if (paisSelect.value) {
-        carregarEstados();
+    // Se a página recarregar e o país já estiver selecionado (ex: erro no form), 
+    // recarrega os estados automaticamente
+    if (countrySelect.value) {
+        loadStates();
     }
 </script>
 </body>
