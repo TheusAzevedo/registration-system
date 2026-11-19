@@ -2,15 +2,15 @@ import re
 import unicodedata
 from country_state_city import Country, State, City
 
-# Pega todos os países e ordena pra ficar bonito no select do front
+# Pega todos os países e ordena por nome
 PAISES = sorted(Country.get_countries(), key=lambda c: c.name)
 
 VOGAIS = "aeiouyáéíóúâêîôûãõàü"
 CONSOANTES = "bcdfghjklmnpqrstvwxzç"
 
 
-def remove_acento(txt):
-    # Função pra tirar acento, senão o banco de dados buga tudo
+def tirar_acento(txt):
+    # Limpa a string pra não bugar a busca no banco depois
     return "".join(
         c for c in unicodedata.normalize("NFD", txt)
         if unicodedata.category(c) != "Mn"
@@ -18,111 +18,122 @@ def remove_acento(txt):
 
 
 def palavra_valida(txt):
-    # Regex básico pra evitar que o usuário digite "aaaaaaaa" ou "bcd fgh"
+    # Validação pra evitar que o usuário digite "aaaaa" ou "bcd fgh"
     txt = txt.replace("'", "").lower()
+    
     if len(txt) < 2:
         return False, "Muito curto."
-    
+        
     if re.search(r"(.)\1{2,}", txt):
         return False, "Letra repetida demais."
-    
+        
     if re.search(r"(.{2,})\1{2,}", txt):
         return False, "Repetição estranha."
-    
+        
     if re.search(r"[bcdfghjklmnpqrstvwxzç]{4,}", txt):
         return False, "Muitas consoantes juntas."
-    
+        
+    # Verifica se tem vogal e consoante
     if not any(c in VOGAIS for c in txt) or not any(c in CONSOANTES for c in txt):
         return False, "Não parece um nome real."
-    
+        
     return True, ""
 
 
-def valida_nome(nome):
-    v = (nome or "").strip().title()
+def valida_nome(valor):
+    v = (valor or "").strip().title()
+    
     if not v:
-        return False, "Nome tá vazio."
-    
+        return False, "O nome tá vazio."
+        
     if " " in v:
-        return False, "Só o primeiro nome, sem sobrenome."
-    
+        return False, "Coloca só o primeiro nome aqui, sem sobrenome."
+        
     if not re.fullmatch(r"[A-Za-zÀ-ÖØ-öø-ÿ'\-]+", v):
         return False, "Sem números ou símbolos no nome."
-    
+        
     ok, erro = palavra_valida(v)
     if not ok:
         return False, f"Nome inválido: {erro}"
+        
     return True, v
 
 
-def valida_sobrenome(sobrenome):
-    v = " ".join((sobrenome or "").strip().split()).title()
-    if not v:
-        return False, "Sobrenome tá vazio."
+def valida_sobrenome(valor):
+    # Junta os espaços extras que o povo digita por engano
+    v = " ".join((valor or "").strip().split()).title()
     
+    if not v:
+        return False, "Sobrenome não pode ficar vazio."
+        
     if not re.fullmatch(r"[A-Za-zÀ-ÖØ-öø-ÿ'\s\-]+", v):
         return False, "Apenas letras e espaços no sobrenome."
-    
+        
+    # Valida cada pedaço do sobrenome (ex: "Da Silva" valida "Da" e "Silva")
     for p in v.split():
         ok, erro = palavra_valida(p)
         if not ok:
-            return False, f"Erro no sobrenome ({p}): {erro}"
-    
+            return False, f"Deu erro no sobrenome ({p}): {erro}"
+            
     return True, v
 
 
-def valida_idade(idade):
+def valida_idade(valor):
     try:
-        n = int(idade)
+        n = int(valor)
         if n < 0 or n > 130:
             return False, "Idade tem que ser entre 0 e 130."
         return True, n
     except (ValueError, TypeError):
-        return False, "Idade tem que ser um número inteiro."
+        return False, "Manda um número inteiro aí."
 
 
 def formata_telefone(digits, ddi=""):
     prefixo = f"+{ddi} " if ddi else ""
+    
+    # Se for fixo (10 dígitos)
     if len(digits) <= 10:
         return f"{prefixo}({digits[:2]}) {digits[2:6]}-{digits[6:]}"
-    
+        
+    # Se for celular (11 dígitos)
     return f"{prefixo}({digits[:2]}) {digits[2:7]}-{digits[7:11]}"
 
 
-def valida_telefone(tel, ddi=""):
-    # Limpa tudo que não for número
-    nums = re.sub(r"\D", "", tel or "")
+def valida_telefone(valor, ddi=""):
+    # Limpa tudo que não for número (parênteses, traços, etc)
+    digits = re.sub(r"\D", "", valor or "")
     
-    if len(nums) not in (10, 11):
+    if len(digits) not in (10, 11):
         return False, "Telefone inválido. Precisa de DDD + número."
-    
-    return True, formata_telefone(nums, ddi)
+        
+    return True, formata_telefone(digits, ddi)
 
 
-def get_pais_info(iso):
+def pegar_info_pais(iso_code):
     for p in PAISES:
-        if p.iso_code == iso:
+        if p.iso_code == iso_code:
             return p.name, p.iso_code, str(p.phonecode).lstrip("+")
     return None, None, None
 
 
-def get_estados(pais_iso):
-    estados_todos = State.get_states_of_country(pais_iso)
+def pegar_estados(country_code):
+    todos = State.get_states_of_country(country_code)
     
     # Filtra só os que tem sigla de 2 letras (padrão BR)
-    estados = [s for s in estados_todos if len(s.iso_code) == 2] or estados_todos
+    estados = [s for s in todos if len(s.iso_code) == 2] or todos
     
     if not estados:
         return [{"name": "Único", "iso_code": "UN"}]
-    
+        
+    # Ordena por sigla pra ficar bonito no dropdown
     estados.sort(key=lambda s: s.iso_code)
     return [{"name": s.name, "iso_code": s.iso_code.upper()} for s in estados]
 
 
-def get_cidades(pais_iso, estado_iso, nome_estado):
-    cidades = City.get_cities_of_state(pais_iso, estado_iso)
+def pegar_cidades(country_code, state_code, state_name):
+    cidades = City.get_cities_of_state(country_code, state_code)
     
     if not cidades:
-        return [nome_estado]
-    
+        return [state_name] # Se não achar cidade, retorna o próprio estado
+        
     return sorted([c.name for c in cidades])
