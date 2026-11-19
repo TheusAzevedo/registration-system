@@ -111,29 +111,33 @@ def valida_telefone(valor, ddi=""):
 
 def pegar_info_pais(iso_code):
     for p in PAISES:
-        if p.iso_code == iso_code:
-            return p.name, p.iso_code, str(p.phonecode).lstrip("+")
+        p_iso = getattr(p, "iso_code", getattr(p, "iso2", ""))
+        if p_iso == iso_code:
+            ddi = str(getattr(p, "phone_code", getattr(p, "phonecode", ""))).lstrip("+")
+            return p.name, p_iso, ddi
     return None, None, None
-
 
 def pegar_estados(country_code):
     todos = State.get_states_of_country(country_code)
-    
-    # Filtra só os que tem sigla de 2 letras (padrão BR)
-    estados = [s for s in todos if len(s.iso_code) == 2] or todos
-    
+    estados = [
+        s for s in todos
+        if len(getattr(s, "iso_code", getattr(s, "state_code", ""))) == 2
+    ] or todos
+
     if not estados:
         return [{"name": "Único", "iso_code": "UN"}]
-        
-    # Ordena por sigla pra ficar bonito no dropdown
-    estados.sort(key=lambda s: s.iso_code)
-    return [{"name": s.name, "iso_code": s.iso_code.upper()} for s in estados]
 
+    estados.sort(key=lambda s: getattr(s, "iso_code", getattr(s, "state_code", "")))
+    return [
+        {
+            "name": s.name,
+            "iso_code": getattr(s, "iso_code", getattr(s, "state_code", "")).upper(),
+        }
+        for s in estados
+    ]
 
 def pegar_cidades(country_code, state_code, state_name):
     cidades = City.get_cities_of_state(country_code, state_code)
-    
     if not cidades:
-        return [state_name] # Se não achar cidade, retorna o próprio estado
-        
+        return [state_name]
     return sorted([c.name for c in cidades])
