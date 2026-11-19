@@ -1,139 +1,201 @@
-import re
-import unicodedata
-from country_state_city import Country, State, City
+import os
+from dotenv import load_dotenv
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from models import db, Pessoa
+from validator import (
+    PAISES, valida_nome, valida_sobrenome, valida_idade, valida_telefone,
+    pegar_info_pais, pegar_estados, pegar_cidades
+)
 
-# Pega todos os países e ordena por nome
-PAISES = sorted(Country.get_countries(), key=lambda c: c.name)
+# Aponta para a pasta principal do projeto
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+load_dotenv(os.path.join(BASE_DIR, ".env"))
 
-VOGAIS = "aeiouyáéíóúâêîôûãõàü"
-CONSOANTES = "bcdfghjklmnpqrstvwxzç"
+app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"))
+
+# Configurações básicas
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+# TODO: Mudar essa secret key no servidor antes de subir pro ar
+app.secret_key = os.getenv("SECRET_KEY", "dev-key")
+
+db.init_app(app)
+
+# Cria as tabelas na primeira execução
+with app.app_context():
+    db.create_all() 
 
 
-def tirar_acento(txt):
-    # Limpa a string pra não bugar a busca no banco depois
-    return "".join(
-        c for c in unicodedata.normalize("NFD", txt)
-        if unicodedata.category(c) != "Mn"
-    ).strip().lower()
+@app.route("/")
+def index():
+    # Pega a galera toda, do mais recente pro mais antigo
+    pessoas = Pessoa.query.order_by(Pessoa.id.desc()).all()
+
+    stats = None
+    if pessoas:
+        idades = [p.idade for p in pessoas]
+        velho = max(pessoas, key=lambda p: p.idade)
+        novo = min(pessoas, key=lambda p: p.idade)
+        
+        # Contando quantos tem de cada país
+        por_pais = {}
+        for p in pessoas:
+            if p.pais in por_pais:
+                por_pais[p.pais] += 1
+            else:
+                por_pais[p.pais] = 1
+
+        stats = {
+            "total": len(pessoas),
+            "media": round(sum(idades) / len(idades), 1),
+            "velho": f"{velho.nome} {velho.sobrenome} ({velho.idade})",
+            "novo": f"{novo.nome} {novo.sobrenome} ({novo.idade})",
+            # Ordena do país com mais gente pro com menos
+            "por_pais": sorted(por_pais.items(), key=lambda x: x[1], reverse=True),
+        }
+
+    return render_template("index.html", cadastros=pessoas, paises=PAISES, stats=stats)
 
 
-def palavra_valida(txt):
-    # Validação pra evitar que o usuário digite "aaaaa" ou "bcd fgh"
-    txt = txt.replace("'", "").lower()
+@app.route("/cadastrar", methods=["POST"])
+def cadastrar():
+    # Pega e valida o nome
+    ok_nome, nome = valida_nome(request.form.get("nome"))
+    if not ok_nome:
+        flash(nome, "danger")
+        return redirect(url_for("index"))
+
+    # Pega e valida o sobrenome
+    ok_sobrenome, sobrenome = valida_sobrenome(request.form.get("sobrenome"))
+    if not ok_sobrenome:
+        flash(sobrenome, "danger")
+        return redirect(url_for("index"))
+
+    # Pega e valida a idade
+    ok_idade, idade = valida_idade(request.form.get("idade"))
+    if not ok_idade:
+        flash(idade, "danger")
+        return redirect(url_for("index"))
+
+    # Pega os dados de localização
+    iso_pais = request.form.get("iso_pais")
+    pais, iso, ddi = pegar_info_pais(iso_pais)
     
-    if len(txt) < 2:
-        return False, "Muito curto."
-        
-    if re.search(r"(.)\1{2,}", txt):
-        return False, "Letra repetida demais."
-        
-    if re.search(r"(.{2,})\1{2,}", txt):
-        return False, "Repetição estranha."
-        
-    if re.search(r"[bcdfghjklmnpqrstvwxzç]{4,}", txt):
-        return False, "Muitas consoantes juntas."
-        
-    # Verifica se tem vogal e consoante
-    if not any(c in VOGAIS for c in txt) or not any(c in CONSOANTES for c in txt):
-        return False, "Não parece um nome real."
-        
-    return True, ""
+    # O select manda "UF|Nome do Estado" junto
+    estado_raw = request.form.get("estado", "") 
+    cidade = request.form.get("cidade")
 
+    if not pais or "|" not in estado_raw or not cidade:
+        flash("Escolha o país, estado e cidade direito.", "danger")
+        return redirect(url_for("index"))
 
-def valida_nome(valor):
-    v = (valor or "").strip().title()
+    uf, estado_nome = estado_raw.split("|", 1)
+
+    # Pega e valida o telefone
+    ok_tel, telefone = valida_telefone(request.form.get("telefone"), ddi=ddi)
+    if not ok_tel:
+        flash(telefone, "danger")
+        return redirect(url_for("index"))
+
+    # Se passou por tudo, salva no banco
+    nova_pessoa = Pessoa(
+        nome=nome,
+        sobrenome=sobrenome,
+        idade=idade,
+        pais=pais,
+        iso_pais=iso,
+        ddi=ddi,
+        estado=estado_nome,
+        sigla_estado=uf,
+        cidade=cidade,
+        telefone=telefone,
+    )
     
-    if not v:
-        return False, "O nome tá vazio."
-        
-    if " " in v:
-        return False, "Coloca só o primeiro nome aqui, sem sobrenome."
-        
-    if not re.fullmatch(r"[A-Za-zÀ-ÖØ-öø-ÿ'\-]+", v):
-        return False, "Sem números ou símbolos no nome."
-        
-    ok, erro = palavra_valida(v)
-    if not ok:
-        return False, f"Nome inválido: {erro}"
-        
-    return True, v
+    db.session.add(nova_pessoa)
+    db.session.commit()
+
+    flash(f"{nome} cadastrado com sucesso!", "success")
+    return redirect(url_for("index"))
 
 
-def valida_sobrenome(valor):
-    # Junta os espaços extras que o povo digita por engano
-    v = " ".join((valor or "").strip().split()).title()
+@app.route("/editar/<int:id>", methods=["GET", "POST"])
+def editar(id):
+    pessoa = Pessoa.query.get_or_404(id)
+
+    if request.method == "POST":
+        # Mesma coisa do cadastro, mas atualizando o que já existe
+        ok_nome, nome = valida_nome(request.form.get("nome"))
+        if not ok_nome:
+            flash(nome, "danger")
+            return redirect(url_for("editar", id=id))
+
+        ok_sobrenome, sobrenome = valida_sobrenome(request.form.get("sobrenome"))
+        if not ok_sobrenome:
+            flash(sobrenome, "danger")
+            return redirect(url_for("editar", id=id))
+
+        ok_idade, idade = valida_idade(request.form.get("idade"))
+        if not ok_idade:
+            flash(idade, "danger")
+            return redirect(url_for("editar", id=id))
+
+        iso_pais = request.form.get("iso_pais")
+        pais, iso, ddi = pegar_info_pais(iso_pais)
+        estado_raw = request.form.get("estado", "")
+        cidade = request.form.get("cidade")
+
+        if not pais or "|" not in estado_raw or not cidade:
+            flash("Localização inválida, confere aí.", "danger")
+            return redirect(url_for("editar", id=id))
+
+        uf, estado_nome = estado_raw.split("|", 1)
+
+        ok_tel, telefone = valida_telefone(request.form.get("telefone"), ddi=ddi)
+        if not ok_tel:
+            flash(telefone, "danger")
+            return redirect(url_for("editar", id=id))
+
+        # Atualizando os campos na mão
+        pessoa.nome = nome
+        pessoa.sobrenome = sobrenome
+        pessoa.idade = idade
+        pessoa.pais = pais
+        pessoa.iso_pais = iso
+        pessoa.ddi = ddi
+        pessoa.estado = estado_nome
+        pessoa.sigla_estado = uf
+        pessoa.cidade = cidade
+        pessoa.telefone = telefone
+
+        db.session.commit()
+        flash("Dados atualizados!", "success")
+        return redirect(url_for("index"))
+
+    return render_template("editar.html", pessoa=pessoa, paises=PAISES)
+
+
+@app.route("/remover/<int:id>", methods=["POST"])
+def remover(id):
+    pessoa = Pessoa.query.get_or_404(id)
+    db.session.delete(pessoa)
+    db.session.commit()
     
-    if not v:
-        return False, "Sobrenome não pode ficar vazio."
-        
-    if not re.fullmatch(r"[A-Za-zÀ-ÖØ-öø-ÿ'\s\-]+", v):
-        return False, "Apenas letras e espaços no sobrenome."
-        
-    # Valida cada pedaço do sobrenome (ex: "Da Silva" valida "Da" e "Silva")
-    for p in v.split():
-        ok, erro = palavra_valida(p)
-        if not ok:
-            return False, f"Deu erro no sobrenome ({p}): {erro}"
-            
-    return True, v
+    flash(f"{pessoa.nome} foi removido do sistema.", "warning")
+    return redirect(url_for("index"))
 
 
-def valida_idade(valor):
-    try:
-        n = int(valor)
-        if n < 0 or n > 130:
-            return False, "Idade tem que ser entre 0 e 130."
-        return True, n
-    except (ValueError, TypeError):
-        return False, "Manda um número inteiro aí."
+# --- Rotas AJAX pro JavaScript buscar os estados e cidades ---
+@app.route("/api/estados/<iso_pais>")
+def api_estados(iso_pais):
+    return jsonify(pegar_estados(iso_pais))
 
 
-def formata_telefone(digits, ddi=""):
-    prefixo = f"+{ddi} " if ddi else ""
-    
-    # Se for fixo (10 dígitos)
-    if len(digits) <= 10:
-        return f"{prefixo}({digits[:2]}) {digits[2:6]}-{digits[6:]}"
-        
-    # Se for celular (11 dígitos)
-    return f"{prefixo}({digits[:2]}) {digits[2:7]}-{digits[7:11]}"
+@app.route("/api/cidades/<iso_pais>/<uf>/<estado_nome>")
+def api_cidades(iso_pais, uf, estado_nome):
+    return jsonify(pegar_cidades(iso_pais, uf, estado_nome))
 
 
-def valida_telefone(valor, ddi=""):
-    # Limpa tudo que não for número (parênteses, traços, etc)
-    digits = re.sub(r"\D", "", valor or "")
-    
-    if len(digits) not in (10, 11):
-        return False, "Telefone inválido. Precisa de DDD + número."
-        
-    return True, formata_telefone(digits, ddi)
-
-
-def pegar_info_pais(iso_code):
-    for p in PAISES:
-        if p.iso_code == iso_code:
-            return p.name, p.iso_code, str(p.phonecode).lstrip("+")
-    return None, None, None
-
-
-def pegar_estados(country_code):
-    todos = State.get_states_of_country(country_code)
-    
-    # Filtra só os que tem sigla de 2 letras (padrão BR)
-    estados = [s for s in todos if len(s.iso_code) == 2] or todos
-    
-    if not estados:
-        return [{"name": "Único", "iso_code": "UN"}]
-        
-    # Ordena por sigla pra ficar bonito no dropdown
-    estados.sort(key=lambda s: s.iso_code)
-    return [{"name": s.name, "iso_code": s.iso_code.upper()} for s in estados]
-
-
-def pegar_cidades(country_code, state_code, state_name):
-    cidades = City.get_cities_of_state(country_code, state_code)
-    
-    if not cidades:
-        return [state_name] # Se não achar cidade, retorna o próprio estado
-        
-    return sorted([c.name for c in cidades])
+if __name__ == "__main__":
+    print("Rodando o servidor local...")
+    app.run(debug=True)
