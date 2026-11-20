@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gerenciar Cadastros</title>
-    <!-- Bootstrap CSS (link corrigido) -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="bg-light">
@@ -15,7 +14,6 @@
         <span class="text-muted fw-semibold">MEI System</span>
     </div>
 
-    <!-- Avisos do Flask -->
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% for category, message in messages %}
             <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm" role="alert">
@@ -47,7 +45,7 @@
                     <select name="country_iso" id="select-country" class="form-select" required>
                         <option value="">Selecione o país...</option>
                         {% for c in countries %}
-                            {# Verifica se a lib retorna iso_code ou iso2 #}
+                            {# A lib às vezes retorna iso_code, às vezes iso2. Vai entender... #}
                             {% set code = c.iso_code if c.iso_code is defined else c.iso2 %}
                             {% set ddi = (c.phone_code if c.phone_code is defined else c.phonecode) | string %}
                             <option value="{{ code }}">
@@ -82,9 +80,19 @@
             </form>
         </div>
     </div>
+
+    <footer class="py-4 mt-5 border-top">
+        <div class="d-flex justify-content-center align-items-center gap-2 text-muted">
+            <img src="{{ url_for('static', filename='img/crest.png') }}"
+                 alt="Brasão"
+                 class="rounded shadow-sm"
+                 style="height: 36px; width: auto; object-fit: contain;">
+            <span class="small">&copy; 2026 MEI System. Todos os direitos reservados.</span>
+        </div>
+    </footer>
+
 </div>
 
-<!-- Bootstrap JS (link corrigido) -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
@@ -95,7 +103,7 @@
     async function loadStates() {
         const iso = countrySelect.value;
 
-        // Limpa e desabilita os selects de baixo
+        // Reseta os selects de baixo
         stateSelect.innerHTML = '<option value="">Buscando estados...</option>';
         stateSelect.disabled = true;
         citySelect.innerHTML = '<option value="">Escolha o estado primeiro</option>';
@@ -112,7 +120,6 @@
 
             stateSelect.innerHTML = '<option value="">Selecione o estado...</option>';
             
-            // Loop pra montar as options (jeito raiz, sem createElement)
             states.forEach(st => {
                 stateSelect.innerHTML += `<option value="${st.iso_code}|${st.name}">${st.name}</option>`;
             });
@@ -135,7 +142,6 @@
             return;
         }
 
-        // Separa a UF do nome do estado (que veio no formato "UF|Nome")
         const [stateCode, stateName] = val.split("|");
 
         try {
@@ -154,12 +160,9 @@
         }
     }
 
-    // Eventos de mudança
     countrySelect.addEventListener("change", loadStates);
     stateSelect.addEventListener("change", loadCities);
 
-    // Se a página recarregar e o país já estiver selecionado (ex: erro no form), 
-    // recarrega os estados automaticamente
     if (countrySelect.value) {
         loadStates();
     }

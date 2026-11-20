@@ -11,7 +11,11 @@ from validator import (
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
-app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"))
+app = Flask(
+    __name__,
+    template_folder=os.path.join(BASE_DIR, "templates"),
+    static_folder=os.path.join(BASE_DIR, "static"),
+)
 
 db_url = os.getenv("DATABASE_URL", "")
 if db_url.startswith("postgres://"):
@@ -38,6 +42,13 @@ def add_security_headers(response):
     # Cabeçalhos de segurança pra evitar clickjacking e XSS
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-Content-Type-Options"] = "nosniff"
+    #Imagem do copyright
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "img-src 'self' data:; "
+        "script-src 'self' 'unsafe-inline' https://jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://jsdelivr.net;"
+    )
     
     # CSP (tive que liberar o CDN do Bootstrap e o inline pros scripts funcionarem)
     response.headers["Content-Security-Policy"] = (
