@@ -17,6 +17,7 @@ app = Flask(
     static_folder=os.path.join(BASE_DIR, "static"),
 )
 
+# Ajusta a URL do banco pra funcionar em nuvem (Render/Railway) com psycopg3
 db_url = os.getenv("DATABASE_URL", "")
 if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql+psycopg://", 1)
@@ -29,8 +30,6 @@ app.config["MAX_CONTENT_LENGTH"] = 16 * 1024
 app.secret_key = os.getenv("SECRET_KEY")
 
 db.init_app(app)
-
-# Registra as rotas que a gente separou no admin.py
 app.register_blueprint(admin_bp) 
 
 with app.app_context():
@@ -39,20 +38,12 @@ with app.app_context():
 
 @app.after_request
 def add_security_headers(response):
-    # Cabeçalhos de segurança pra evitar clickjacking e XSS
+    # Headers de segurança (clickjacking, XSS) e CSP pro CDN do Bootstrap
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-Content-Type-Options"] = "nosniff"
-    #Imagem do copyright
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "img-src 'self' data:; "
-        "script-src 'self' 'unsafe-inline' https://jsdelivr.net; "
-        "style-src 'self' 'unsafe-inline' https://jsdelivr.net;"
-    )
-    
-    # CSP (tive que liberar o CDN do Bootstrap e o inline pros scripts funcionarem)
-    response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;"
     )
@@ -66,7 +57,7 @@ def index():
 
 @app.route("/register", methods=["POST"])
 def register():
-    # Validações do form de cadastro
+    # Valida nome, sobrenome e idade
     ok_first, first_name = validate_first_name(request.form.get("first_name"))
     if not ok_first:
         flash(first_name, "danger")
@@ -82,7 +73,7 @@ def register():
         flash(age, "danger")
         return redirect(url_for("index"))
 
-    # Valida a localização pra ver se o cara não burlou o HTML
+    # Valida a localização (pra ver se o usuário não burlou o HTML)
     ok_loc, loc = validate_location(
         request.form.get("country_iso"),
         request.form.get("state"),
@@ -92,7 +83,7 @@ def register():
         flash("Localização inválida.", "danger")
         return redirect(url_for("index"))
 
-    # Desempacotando os dados que vieram da validação
+    # Desempacota os dados da localização
     country, iso, ddi, state_code, state_name, city = loc
 
     ok_phone, phone = validate_phone(request.form.get("phone"), ddi=ddi)
@@ -100,7 +91,7 @@ def register():
         flash(phone, "danger")
         return redirect(url_for("index"))
 
-    # Se tudo deu certo, cria o objeto e salva
+    # Salva no banco
     new_person = Person(
         first_name=first_name,
         last_name=last_name,
