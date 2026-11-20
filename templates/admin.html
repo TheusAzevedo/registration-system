@@ -26,7 +26,6 @@
         {% endfor %}
     {% endwith %}
 
-    <!-- Tabela de dados -->
     <div class="card shadow-sm border-0">
         <div class="table-responsive">
             <table class="table table-hover mb-0">
@@ -64,7 +63,11 @@
 
     <footer class="py-4 mt-5 border-top">
         <div class="d-flex justify-content-center align-items-center gap-2 text-muted">
-           <img src="data:image/png;base64," alt="Bras�o" class="rounded shadow-sm" style="height: 36px; width: auto; object-fit: contain;">
+            <img src="{{ url_for('static', filename='img/crest.png') }}"
+                 alt="Crest"
+                 class="rounded shadow-sm"
+                 style="height: 36px; width: auto; object-fit: contain;">
+            <span class="small">&copy; 2026 MEI System. All rights reserved.</span>
         </div>
     </footer>
 
